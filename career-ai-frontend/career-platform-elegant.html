@@ -2234,18 +2234,38 @@
         }
 
         // Upload
-        function handleUpload(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+ async function handleUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-            document.querySelector('.upload-layout').style.display = 'none';
-            document.getElementById('loading').classList.add('active');
+    // UI state
+    document.querySelector('.upload-layout').style.display = 'none';
+    document.getElementById('loading').classList.add('active');
 
-            setTimeout(() => {
-                document.getElementById('loading').classList.remove('active');
-                document.getElementById('success').classList.add('active');
-            }, 3000);
-        }
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch("http://localhost:7071/api/processResume", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await response.json();
+
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('success').classList.add('active');
+
+        console.log("Backend response:", result);
+
+        // OPTIONAL: Store resume_id for next step
+        window.resumeId = result.resume_id;
+
+    } catch (error) {
+        console.error("Upload failed:", error);
+        alert("Upload failed. Please try again.");
+    }
+}
 
         // Render jobs
         function renderJobs() {
