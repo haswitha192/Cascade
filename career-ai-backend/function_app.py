@@ -2,6 +2,7 @@ import azure.functions as func
 import json
 import logging
 import os
+import tempfile
 
 from services.document_service import analyze_resume
 from services.blob_service import upload_resume
@@ -10,6 +11,10 @@ from services.skill_service import extract_skills
 from services.career_optimization_service import generate_recommendations
 from services.resume_skill_service import fetch_resume_skills
 from services.score_service import compute_resume_score
+from services.speech_service import transcribe_audio
+from services.speech_analysis import calculate_wpm
+from services.interview_ai import evaluate_answer, generate_interview_questions
+from services.resume_skill_service import fetch_resume_skills
 
 
 # ─────────────────────────────────────────────
@@ -188,4 +193,195 @@ def get_resume_skills(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logging.exception("getResumeSkills failed")
+        return json_response({"success": False, "error": str(e)}, 500)
+    
+# ─────────────────────────────────────────────
+# 4. Start Interview
+# ─────────────────────────────────────────────
+@app.function_name(name="startInterview")
+@app.route(route="startInterview", methods=["POST", "OPTIONS"])
+def start_interview(req: func.HttpRequest) -> func.HttpResponse:
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
+
+    logging.info("startInterview request received.")
+
+    fallback_questions = [
+        "Tell me about yourself and your professional background.",
+        "What are your strongest technical skills?",
+        "Describe a difficult problem you solved at work.",
+        "Why are you interested in this role?",
+        "Where do you see yourself in five years?"
+    ]
+
+    try:
+        try:
+            body = req.get_json() or {}
+        except Exception:
+            body = {}
+        resume_id_raw = body.get("resume_id") or req.params.get("resume_id")
+
+        if not resume_id_raw:
+            logging.info("No resume_id provided — returning fallback questions.")
+            return json_response({"success": True, "questions": fallback_questions})
+
+        resume_id = int(resume_id_raw)
+
+        # ── Fetch resume text from SQL ──────────────────────────────
+        from services.sql_service import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT extracted_text FROM Resumes WHERE resume_id = ?",
+            resume_id
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not row or not row[0]:
+            logging.warning(f"No resume text found for resume_id={resume_id}")
+            return json_response({"success": True, "questions": fallback_questions})
+
+        resume_text = row[0]
+
+        # ── Fetch extracted skills ──────────────────────────────────
+        skills = fetch_resume_skills(resume_id)
+
+        # ── Generate personalised questions with Groq LLM ───────────
+        questions = generate_interview_questions(resume_text, skills)
+
+        logging.info(f"Generated {len(questions)} personalised questions for resume_id={resume_id}")
+
+        return json_response({"success": True, "questions": questions})
+
+    except Exception as e:
+        logging.exception("startInterview failed — returning fallback questions")
+        return json_response({"success": True, "questions": fallback_questions})
+
+# ─────────────────────────────────────────────
+# 5. Submit Audio Answer
+# ─────────────────────────────────────────────
+@app.function_name(name="submitAudioAnswer")
+@app.route(route="submitAudioAnswer", methods=["POST", "OPTIONS"])
+def submit_audio_answer(req: func.HttpRequest) -> func.HttpResponse:
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
+
+    logging.info("submitAudioAnswer request received.")
+
+    try:
+
+        file = req.files.get("audio")
+        question = req.form.get("question")
+
+        if not file:
+            return json_response({"error": "No audio file provided"}, 400)
+
+        if not question:
+            return json_response({"error": "Question missing"}, 400)
+
+        # Save temporary audio file — browsers record WebM/Opus, not WAV
+        webm_path = os.path.join(tempfile.gettempdir(), "interview_answer.webm")
+        wav_path = os.path.join(tempfile.gettempdir(), "interview_answer.wav")
+
+        with open(webm_path, "wb") as f:
+            f.write(file.stream.read())
+
+        # ─────────────────────────
+        # Convert WebM to true PCM WAV
+        # ─────────────────────────
+        try:
+            from pydub import AudioSegment
+            import pydub.utils
+            
+            # Winget installs ffmpeg here for the Administrator account
+            ffmpeg_path = r"C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
+            ffprobe_path = r"C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffprobe.exe"
+            
+            AudioSegment.converter = ffmpeg_path
+            AudioSegment.ffmpeg = ffmpeg_path
+            pydub.utils.get_prober_name = lambda: ffprobe_path
+            
+            audio_segment = AudioSegment.from_file(webm_path, format="webm")
+            # Export as true PCM WAV
+            audio_segment.export(wav_path, format="wav")
+            logging.info("Successfully transcoded WebM to WAV using pydub/ffmpeg")
+        except Exception as e:
+            logging.error(f"Failed to transcode audio with pydub: {e}")
+            # Fallback to the webm path if transcode fails (though Speech SDK will reject it)
+            wav_path = webm_path
+
+        # ─────────────────────────
+        # Speech → Text
+        # ─────────────────────────
+        transcript = transcribe_audio(wav_path)
+
+        logging.info(f"Transcript: {transcript}")
+
+        # ─────────────────────────
+        # Speaking Speed
+        # ─────────────────────────
+        duration_seconds = 10  # placeholder for now
+        speaking_speed = calculate_wpm(transcript, duration_seconds)
+
+        # ─────────────────────────
+        # AI Interview Evaluation
+        # ─────────────────────────
+        evaluation = evaluate_answer(question, transcript)
+
+        result = {
+            "success": True,
+            "transcript": transcript,
+            "speaking_speed": speaking_speed,
+            "technical_score": evaluation["technical_score"],
+            "communication_score": evaluation["communication_score"],
+            "confidence_score": evaluation["confidence_score"],
+            "overall_score": evaluation["overall_score"],
+            "feedback": evaluation["feedback"]
+        }
+
+        return json_response(result)
+
+    except Exception as e:
+        logging.exception("submitAudioAnswer failed")
+        return json_response({"success": False, "error": str(e)}, 500)
+
+
+# ─────────────────────────────────────────────
+# 6. Analyze Video Frame
+# ─────────────────────────────────────────────
+@app.function_name(name="analyzeVideoFrame")
+@app.route(route="analyzeVideoFrame", methods=["POST", "OPTIONS"])
+def analyze_video_frame(req: func.HttpRequest) -> func.HttpResponse:
+
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
+
+    logging.info("analyzeVideoFrame request received.")
+
+    try:
+
+        file = req.files.get("frame")
+
+        if not file:
+            return json_response({"error": "No frame image provided"}, 400)
+
+        image_bytes = file.stream.read()
+
+        from services.video_analysis_service import analyze_face
+
+        result = analyze_face(image_bytes)
+
+        return json_response({
+            "success": True,
+            "confidence_score": result["confidence_score"],
+            "eye_contact": result["eye_contact"],
+            "emotion": result["emotion"]
+        })
+
+    except Exception as e:
+        logging.exception("analyzeVideoFrame failed")
         return json_response({"success": False, "error": str(e)}, 500)

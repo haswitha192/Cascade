@@ -2082,6 +2082,10 @@
 
                 <div class="video-container">
                     <div class="video-main">
+                        <div style="margin-top:15px; font-size:14px; color:#333;">
+                            <div id="confidenceScore">Confidence: --</div>
+                            <div id="emotionLabel">Emotion: --</div>
+                        </div>
                         <video id="userVideo" autoplay muted playsinline></video>
                         <div class="video-overlay">
                             <div class="video-status" id="videoStatus">Camera Initializing...</div>
@@ -2710,9 +2714,16 @@
         let isCameraActive = false;
         let isMicVideoActive = false;
         let questionIndex = 0;
+        let currentQuestionIndex = 0;
         let mediaStream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let videoMediaRecorder = null;
+        let videoAudioChunks = [];
+        let videoAnalysisInterval = null;
 
-        const interviewQuestions = [
+        // BUG FIX: must be `let` so startInterview can reassign with backend data
+        let interviewQuestions = [
             "Tell me about yourself and your professional background.",
             "What are your greatest strengths and how do they apply to this role?",
             "Describe a challenging situation you faced and how you resolved it.",
@@ -2728,8 +2739,15 @@
             "Your enthusiasm is evident. Thank you for your thoughtful responses today."
         ];
 
-        function startInterview(mode) {
+        async function startInterview(mode) {
             currentInterviewMode = mode;
+            currentQuestionIndex = 0;
+            questionIndex = 0;
+            mediaRecorder = null;
+            audioChunks = [];
+            videoMediaRecorder = null;
+            videoAudioChunks = [];
+
             document.getElementById('modeSelection').style.display = 'none';
 
             if (mode === 'audio') {
@@ -2737,6 +2755,38 @@
             } else {
                 document.getElementById('videoInterview').classList.add('active');
                 initializeCamera();
+            }
+
+            try {
+                // Pass resume_id so backend generates personalised questions
+                const body = window.currentResumeId
+                    ? JSON.stringify({ resume_id: window.currentResumeId })
+                    : '{}';
+
+                const res = await fetch("http://localhost:7071/api/startInterview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: body
+                });
+
+                const data = await res.json();
+
+                if (data.questions && data.questions.length > 0) {
+                    interviewQuestions = data.questions;
+                }
+                // else keep the local fallback array
+            } catch (err) {
+                console.warn("Could not fetch interview questions from backend:", err);
+            }
+
+            // Show first question
+            if (mode === 'audio') {
+                addChatMessage(interviewQuestions[0], 'interviewer');
+            } else {
+                // Update the video mode question panel
+                document.querySelector('.question-number').textContent =
+                    `Question 1 of ${interviewQuestions.length}`;
+                document.querySelector('.question-text').textContent = interviewQuestions[0];
             }
         }
 
@@ -2746,16 +2796,43 @@
                 mediaStream = null;
             }
 
+            // Stop any active video recorder
+            if (videoMediaRecorder && videoMediaRecorder.state === 'recording') {
+                videoMediaRecorder.stop();
+            }
+            videoMediaRecorder = null;
+            videoAudioChunks = [];
+            mediaRecorder = null;
+            audioChunks = [];
+
             document.getElementById('audioInterview').classList.remove('active');
             document.getElementById('videoInterview').classList.remove('active');
             document.getElementById('modeSelection').style.display = 'grid';
 
             // Reset states
             questionIndex = 0;
+            currentQuestionIndex = 0;
             isRecording = false;
             isMicActive = false;
             isCameraActive = false;
             isMicVideoActive = false;
+
+            // Reset video question panel
+            document.querySelector('.question-number').textContent = 'Question 1 of 5';
+            document.querySelector('.question-text').textContent = 'Tell me about yourself and your professional background.';
+            document.querySelector('.question-actions').innerHTML = `
+                <button class="question-button" onclick="startRecording()">
+                    <span id="recordingIcon">⏺</span>
+                    <span id="recordingText">Start Recording</span>
+                </button>
+                <button class="question-button secondary" onclick="nextQuestion()">Next Question</button>
+            `;
+            const fb = document.getElementById('videoFeedback');
+            if (fb) fb.innerHTML = '';
+
+            if (videoAnalysisInterval) {
+                clearInterval(videoAnalysisInterval);
+            }
 
             // Reset chat
             const chatMessages = document.getElementById('chatMessages');
@@ -2770,28 +2847,131 @@
         }
 
         // Audio Interview Functions
-        function toggleMicrophone() {
+        async function toggleMicrophone() {
+
             const micButton = document.getElementById('micButton');
-            const voiceIndicator = document.getElementById('voiceIndicator');
 
-            isMicActive = !isMicActive;
+            if (!mediaRecorder) {
 
-            if (isMicActive) {
-                micButton.classList.add('active');
-                micButton.querySelector('.mic-text').textContent = 'Recording...';
-                voiceIndicator.classList.add('active');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-                // Simulate recording for 3 seconds
-                setTimeout(() => {
-                    if (isMicActive) {
-                        toggleMicrophone();
-                        simulateVoiceResponse();
-                    }
-                }, 3000);
+                // Explicitly request WebM/Opus — what browsers natively produce
+                // and what the backend's speech_service.py expects
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm')
+                        ? 'audio/webm'
+                        : '';
+
+                mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                    audioChunks = [];
+                    await sendAudioToBackend(audioBlob);
+                };
+            }
+
+            if (mediaRecorder.state === "recording") {
+
+                mediaRecorder.stop();
+
+                micButton.classList.remove("active");
+                micButton.querySelector(".mic-text").textContent = "Hold to Speak";
+
             } else {
-                micButton.classList.remove('active');
-                micButton.querySelector('.mic-text').textContent = 'Hold to Speak';
-                voiceIndicator.classList.remove('active');
+
+                mediaRecorder.start();
+
+                micButton.classList.add("active");
+                micButton.querySelector(".mic-text").textContent = "Recording...";
+
+            }
+        }
+
+        async function sendAudioToBackend(audioBlob) {
+            const question = interviewQuestions[currentQuestionIndex] || 'Tell me about yourself.';
+            const micButton = document.getElementById('micButton');
+
+            // Show a "processing" message while we wait
+            const processingId = 'processing-msg-' + Date.now();
+            const chatMessages = document.getElementById('chatMessages');
+            const processingDiv = document.createElement('div');
+            processingDiv.id = processingId;
+            processingDiv.className = 'message interviewer';
+            processingDiv.innerHTML = `
+                <div class="message-avatar">I</div>
+                <div class="message-content"><p>⏳ Evaluating your response…</p></div>`;
+            chatMessages.appendChild(processingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            if (micButton) micButton.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append("audio", audioBlob, "answer.wav");
+                formData.append("question", question);
+
+                const res = await fetch("http://localhost:7071/api/submitAudioAnswer", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await res.json();
+                console.log("AI Evaluation:", data);
+
+                // Remove the "processing" placeholder
+                const placeholder = document.getElementById(processingId);
+                if (placeholder) placeholder.remove();
+
+                if (!data.success && data.error) {
+                    addChatMessage("⚠️ Could not evaluate: " + data.error, "interviewer");
+                    return;
+                }
+
+                // Show transcript as user's message (only if non-empty)
+                const transcript = data.transcript && data.transcript.trim();
+                if (transcript) {
+                    addChatMessage(transcript, "user");
+                } else {
+                    addChatMessage("(No speech detected — please try again)", "user");
+                }
+
+                // Show AI feedback as a nice card
+                const overall = data.overall_score ?? '—';
+                const technical = data.technical_score ?? '—';
+                const communication = data.communication_score ?? '—';
+                const confidence = data.confidence_score ?? '—';
+                const speed = data.speaking_speed ?? '—';
+                const feedback = data.feedback ?? 'No feedback available.';
+
+                addChatMessage(`
+                     Score: ${overall}/100  |  Technical: ${technical}  |  Communication: ${communication}  |  Confidence: ${confidence}
+                     Speaking speed: ${speed} WPM
+                     ${feedback}`, "interviewer"
+                );
+
+                currentQuestionIndex++;
+
+                if (currentQuestionIndex < interviewQuestions.length) {
+                    setTimeout(() => {
+                        addChatMessage(interviewQuestions[currentQuestionIndex], "interviewer");
+                    }, 2000);
+                } else {
+                    addChatMessage("🎉 Interview complete. Thank you for your time!", "interviewer");
+                }
+
+            } catch (err) {
+                console.error("sendAudioToBackend error:", err);
+                const placeholder = document.getElementById(processingId);
+                if (placeholder) placeholder.remove();
+                addChatMessage(" Error submitting answer: " + err.message, "interviewer");
+            } finally {
+                if (micButton) micButton.disabled = false;
             }
         }
 
@@ -2866,16 +3046,99 @@
             }
         }
 
-        // Video Interview Functions
+        // Video Interview 
+        async function sendFrameToBackend(frameBlob) {
+
+            const formData = new FormData();
+            formData.append("frame", frameBlob);
+
+            try {
+
+                const res = await fetch(
+                    "http://localhost:7071/api/analyzeVideoFrame",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+                const data = await res.json();
+
+                console.log("Video AI:", data);
+
+                // Update UI
+                const confidenceEl = document.getElementById("confidenceScore");
+                const emotionEl = document.getElementById("emotionLabel");
+
+                if (confidenceEl) {
+                    confidenceEl.textContent = "Confidence: " + data.confidence_score;
+                }
+
+                if (emotionEl) {
+                    emotionEl.textContent = "Emotion: " + data.emotion;
+                }
+
+            } catch (err) {
+
+                console.error("Video AI error:", err);
+
+            }
+
+        }
+
+        function startVideoAnalysis() {
+
+            const video = document.getElementById("userVideo");
+
+            if (!video) return;
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+
+            videoAnalysisInterval = setInterval(() => {
+
+                if (video.videoWidth === 0) return;
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                canvas.toBlob(async blob => {
+
+                    if (blob) {
+                        await sendFrameToBackend(blob);
+                    }
+
+                }, "image/jpeg");
+
+            }, 3000); // every 3 seconds
+        }
+
+
+
         async function initializeCamera() {
             try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720 },
-                    audio: true
-                });
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("Browser API navigator.mediaDevices.getUserMedia not available");
+                }
+
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: 1280, height: 720 },
+                        audio: true
+                    });
+                } catch (e) {
+                    console.warn("Specific resolution failed, falling back to default video constraints...", e);
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: true
+                    });
+                }
 
                 const videoElement = document.getElementById('userVideo');
                 videoElement.srcObject = mediaStream;
+                startVideoAnalysis();
 
                 document.getElementById('videoStatus').textContent = 'Camera Active';
                 document.getElementById('cameraToggle').classList.add('active');
@@ -2890,8 +3153,19 @@
 
             } catch (error) {
                 console.error('Camera access error:', error);
-                document.getElementById('videoStatus').textContent = 'Camera Access Denied';
-                document.getElementById('videoStatus').style.background = 'rgba(220, 20, 60, 0.9)';
+                const statusElement = document.getElementById('videoStatus');
+
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    statusElement.textContent = 'Camera Access Denied. Please allow permissions in your browser.';
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    statusElement.textContent = 'No Camera or Microphone Found.';
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError' || (error.message && error.message.toLowerCase().includes('could not start video source'))) {
+                    statusElement.textContent = 'Camera in use by another app or blocked by Windows settings. Please close other apps and try again.';
+                } else {
+                    statusElement.textContent = 'Camera Error: ' + (error.message || 'Initialization Failed');
+                }
+
+                statusElement.style.background = 'rgba(220, 20, 60, 0.9)';
             }
         }
 
@@ -2932,40 +3206,99 @@
             }
         }
 
-        function startRecording() {
+        async function startRecording() {
             const recordButton = document.querySelector('.question-actions .question-button:first-child');
             const recordIcon = document.getElementById('recordingIcon');
             const recordText = document.getElementById('recordingText');
 
-            isRecording = !isRecording;
+            if (!videoMediaRecorder || videoMediaRecorder.state === 'inactive') {
+                // Start recording from mediaStream (camera + mic)
+                if (!mediaStream) {
+                    alert('Please enable your camera/microphone first.');
+                    return;
+                }
+                videoAudioChunks = [];
+                // Record only audio track for submission
+                const audioStream = new MediaStream(mediaStream.getAudioTracks());
+                const videoMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+                videoMediaRecorder = new MediaRecorder(audioStream, videoMime ? { mimeType: videoMime } : {});
 
-            if (isRecording) {
+                videoMediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) videoAudioChunks.push(e.data);
+                };
+
+                videoMediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(videoAudioChunks, { type: 'audio/webm' });
+                    videoAudioChunks = [];
+                    recordButton.disabled = true;
+                    recordText.textContent = 'Evaluating...';
+                    try {
+                        const question = interviewQuestions[questionIndex] || 'Tell me about yourself.';
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob, 'answer.wav');
+                        formData.append('question', question);
+                        const res = await fetch('http://localhost:7071/api/submitAudioAnswer', {
+                            method: 'POST', body: formData
+                        });
+                        const data = await res.json();
+                        // Show AI feedback below the question
+                        const feedbackDiv = document.getElementById('videoFeedback') ||
+                            (() => {
+                                const d = document.createElement('div'); d.id = 'videoFeedback';
+                                d.style.cssText = 'margin-top:20px;padding:20px;background:var(--cream);border:1px solid var(--border);font-size:16px;line-height:1.7;';
+                                document.querySelector('.interview-questions').appendChild(d); return d;
+                            })();
+                        feedbackDiv.innerHTML = `<strong>Transcript:</strong> ${data.transcript || '(empty)'}<br><br>
+                            <strong>Overall Score:</strong> ${data.overall_score}/100<br>
+                            <strong>Feedback:</strong> ${data.feedback}`;
+                    } catch (err) {
+                        console.error('submitAudioAnswer error:', err);
+                    } finally {
+                        recordButton.disabled = false;
+                        recordButton.classList.remove('recording');
+                        recordIcon.textContent = '⏺';
+                        recordText.textContent = 'Start Recording';
+                        isRecording = false;
+                    }
+                };
+
+                videoMediaRecorder.start();
+                isRecording = true;
                 recordButton.classList.add('recording');
                 recordIcon.textContent = '⏹';
                 recordText.textContent = 'Stop Recording';
-            } else {
-                recordButton.classList.remove('recording');
-                recordIcon.textContent = '⏺';
-                recordText.textContent = 'Start Recording';
+
+            } else if (videoMediaRecorder.state === 'recording') {
+                videoMediaRecorder.stop();
+                isRecording = false;
+                // UI reset happens in onstop after evaluation
             }
         }
 
         function nextQuestion() {
+            // Use questionIndex for the video interview panel
             questionIndex++;
 
             if (questionIndex < interviewQuestions.length) {
-                document.querySelector('.question-number').textContent = `Question ${questionIndex + 1} of ${interviewQuestions.length}`;
+                document.querySelector('.question-number').textContent =
+                    `Question ${questionIndex + 1} of ${interviewQuestions.length}`;
                 document.querySelector('.question-text').textContent = interviewQuestions[questionIndex];
 
-                // Reset recording state
-                if (isRecording) {
-                    startRecording();
+                // Clear previous feedback
+                const fb = document.getElementById('videoFeedback');
+                if (fb) fb.innerHTML = '';
+
+                // Stop any active recording
+                if (isRecording && videoMediaRecorder && videoMediaRecorder.state === 'recording') {
+                    videoMediaRecorder.stop();
                 }
             } else {
-                document.querySelector('.question-text').textContent = 'Interview Complete — Thank you for your participation.';
-                document.querySelector('.question-actions').innerHTML = `
-                    <button class="question-button" onclick="endInterview()">End Session</button>
-                `;
+                document.querySelector('.question-text').textContent =
+                    'Interview Complete — Thank you for your participation.';
+                document.querySelector('.question-actions').innerHTML =
+                    `<button class="question-button" onclick="endInterview()">End Session</button>`;
             }
         }
 
