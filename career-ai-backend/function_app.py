@@ -295,6 +295,7 @@ def submit_audio_answer(req: func.HttpRequest) -> func.HttpResponse:
         # ─────────────────────────
         try:
             import shutil
+            import pydub
             from pydub import AudioSegment
             
             ffmpeg_path = shutil.which("ffmpeg")
