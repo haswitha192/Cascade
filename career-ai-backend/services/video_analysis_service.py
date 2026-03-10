@@ -29,8 +29,11 @@ def analyze_face(image_bytes):
             params=params,
             headers=headers,
             data=image_bytes,
-            timeout=10
+            timeout=20
         )
+        logging.info(f"Face API Response Status: {response.status_code}")
+        if response.status_code != 200:
+            logging.error(f"Face API Error Response: {response.text}")
     except Exception as e:
         logging.error(f"Face API Request failed: {e}")
         return {"confidence_score": 0, "eye_contact": False, "emotion": "connection_error"}

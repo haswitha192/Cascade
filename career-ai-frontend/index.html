@@ -1800,7 +1800,7 @@
                         </ul>
                     </div>
                     <div class="slide-visual">
-                        <span class="slide-icon">ðŸ“„</span>
+                        <span class="slide-icon">📄</span>
                         <div class="slide-caption">Precision Analysis</div>
                     </div>
                 </div>
@@ -1846,7 +1846,7 @@
                         </ul>
                     </div>
                     <div class="slide-visual">
-                        <span class="slide-icon">ðŸ“Š</span>
+                        <span class="slide-icon">📊</span>
                         <div class="slide-caption">Strategic Growth</div>
                     </div>
                 </div>
@@ -1869,14 +1869,14 @@
                         </ul>
                     </div>
                     <div class="slide-visual">
-                        <span class="slide-icon">ðŸ’¼</span>
+                        <span class="slide-icon">💼</span>
                         <div class="slide-caption">Confident Presentation</div>
                     </div>
                 </div>
             </div>
 
-            <button class="slide-nav slide-prev" onclick="changeSlide(-1)">â€¹</button>
-            <button class="slide-nav slide-next" onclick="changeSlide(1)">â€º</button>
+            <button class="slide-nav slide-prev" onclick="changeSlide(-1)">‹</button>
+            <button class="slide-nav slide-next" onclick="changeSlide(1)">›</button>
         </div>
 
         <div class="slide-controls">
@@ -1936,7 +1936,7 @@
             </div>
             <div>
                 <div class="upload-zone" onclick="document.getElementById('fileUpload').click()">
-                    <span class="upload-icon">ðŸ“„</span>
+                    <span class="upload-icon">📄</span>
                     <h3>Submit Resume</h3>
                     <p>Select your professional document</p>
                     <div class="format-list">
@@ -2025,7 +2025,7 @@
                     <div class="mode-cta">Begin Audio Session</div>
                 </div>
                 <div class="mode-card" onclick="startInterview('video')">
-                    <div class="mode-icon">ðŸ“¹</div>
+                    <div class="mode-icon">📹</div>
                     <h3>Video Interview</h3>
                     <p>Experience a complete video interview with camera and professional feedback.</p>
                     <div class="mode-cta">Begin Video Session</div>
@@ -2133,7 +2133,7 @@
     <!-- Modal -->
     <div class="modal" id="roadmapModal">
         <div class="modal-content">
-            <button class="modal-close" onclick="closeModal()">Ã—</button>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
 
             <div class="roadmap-header">
                 <h2 id="modalTitle">Professional Development Plan</h2>
@@ -2401,9 +2401,9 @@
                         // Salary display
                         const salaryHTML = (job.salary_min || job.salary_max)
                             ? `<div style="margin-top:6px;font-size:13px;color:var(--text-muted);">
-                               ðŸ’° ${job.salary_min ? 'â‚¹' + Math.round(job.salary_min).toLocaleString() : ''}
-                               ${job.salary_min && job.salary_max ? ' â€“ ' : ''}
-                               ${job.salary_max ? 'â‚¹' + Math.round(job.salary_max).toLocaleString() : ''} /yr
+                               💰 ${job.salary_min ? '₹' + Math.round(job.salary_min).toLocaleString() : ''}
+                               ${job.salary_min && job.salary_max ? ' – ' : ''}
+                               ${job.salary_max ? '₹' + Math.round(job.salary_max).toLocaleString() : ''} /yr
                            </div>`
                             : '';
 
@@ -2427,8 +2427,8 @@
                                 </div>
                                 <div class="job-company">${job.company || ''}</div>
                                 <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-                                    ${job.location ? `<span style="font-size:13px;color:var(--text-muted);">ðŸ“ ${job.location}</span>` : ''}
-                                    ${job.experience_level ? `<span style="font-size:13px;color:var(--text-muted);">ðŸ’¼ ${job.experience_level}</span>` : ''}
+                                    ${job.location ? `<span style="font-size:13px;color:var(--text-muted);">📍 ${job.location}</span>` : ''}
+                                    ${job.experience_level ? `<span style="font-size:13px;color:var(--text-muted);">💼 ${job.experience_level}</span>` : ''}
                                 </div>
                                 ${salaryHTML}
                             </div>
@@ -2458,7 +2458,7 @@
                             <a class="btn-job btn-primary-job" href="${job.redirect_url || '#'}"
                                target="_blank" rel="noopener"
                                style="text-align:center;text-decoration:none;display:block;">
-                               Apply Now â†—
+                               Apply Now ↗
                             </a>
                         </div>
                     `;
@@ -2488,11 +2488,11 @@
 
                 // Parse labeled sections: STRENGTHS:, IMPROVEMENTS:, MISSING KEYWORDS:, ATS SCORE:, OVERALL VERDICT:
                 const sectionDefs = [
-                    { key: 'STRENGTHS', icon: 'âœ¦', color: '#2e7d32', bg: '#f1f8e9' },
-                    { key: 'IMPROVEMENTS', icon: 'â–²', color: '#e65100', bg: '#fff3e0' },
-                    { key: 'MISSING KEYWORDS', icon: 'â—ˆ', color: '#1565c0', bg: '#e3f2fd' },
-                    { key: 'ATS SCORE ESTIMATE', icon: 'âŠ•', color: '#6a1b9a', bg: '#f3e5f5' },
-                    { key: 'OVERALL VERDICT', icon: 'â˜…', color: '#0b1f3f', bg: '#faf9f7' },
+                    { key: 'STRENGTHS', icon: '✦', color: '#2e7d32', bg: '#f1f8e9' },
+                    { key: 'IMPROVEMENTS', icon: '▲', color: '#e65100', bg: '#fff3e0' },
+                    { key: 'MISSING KEYWORDS', icon: '◈', color: '#1565c0', bg: '#e3f2fd' },
+                    { key: 'ATS SCORE ESTIMATE', icon: '⊕', color: '#6a1b9a', bg: '#f3e5f5' },
+                    { key: 'OVERALL VERDICT', icon: '★', color: '#0b1f3f', bg: '#faf9f7' },
                 ];
 
                 // Extract each section content
@@ -3061,14 +3061,18 @@
                 formData.append("frame", frameBlob);
 
                 try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
                     const res = await fetch(
                         "https://career-ai-functions-h4gpa8h5cccsghdz.centralindia-01.azurewebsites.net/api/analyzeVideoFrame",
                         {
                             method: "POST",
-                            body: formData
+                            body: formData,
+                            signal: controller.signal
                         }
                     );
+                    clearTimeout(timeoutId);
 
                     const data = await res.json();
 
@@ -3095,9 +3099,12 @@
                     }
 
                 } catch (err) {
-
                     console.error("Video AI error:", err);
-
+                    const confidenceEl = document.getElementById("confidenceScore");
+                    const emotionEl = document.getElementById("emotionLabel");
+                    const msg = err.name === 'AbortError' ? 'connection_timeout' : 'connection_error';
+                    if (confidenceEl) confidenceEl.textContent = "Confidence: " + msg;
+                    if (emotionEl) emotionEl.textContent = "Emotion: " + msg;
                 }
 
             }
@@ -3336,7 +3343,7 @@
                     videoMediaRecorder.start();
                     isRecording = true;
                     recordButton.classList.add('recording');
-                    recordIcon.textContent = 'â¹';
+                    recordIcon.textContent = '⏹️';
                     recordText.textContent = 'Stop Recording';
 
                 } else if (videoMediaRecorder.state === 'recording') {
