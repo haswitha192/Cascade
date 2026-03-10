@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import shutil
+import pydub
 from pydub import AudioSegment
 from services.document_service import analyze_resume
 from services.blob_service import upload_resume
@@ -294,10 +295,6 @@ def submit_audio_answer(req: func.HttpRequest) -> func.HttpResponse:
 
         # ─────────────────────────
         try:
-            import shutil
-            import pydub
-            from pydub import AudioSegment
-            
             ffmpeg_path = shutil.which("ffmpeg")
             ffprobe_path = shutil.which("ffprobe")
             if not ffmpeg_path:
