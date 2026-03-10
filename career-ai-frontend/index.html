@@ -2019,7 +2019,7 @@
             <!-- Interview Mode Selection -->
             <div class="interview-mode-selection" id="modeSelection">
                 <div class="mode-card" onclick="startInterview('audio')">
-                    <div class="mode-icon">ðŸŽ™ï¸</div>
+                    <div class="mode-icon">🎙️</div>
                     <h3>Audio Interview</h3>
                     <p>Practice with voice-based responses in an elegant conversational format.</p>
                     <div class="mode-cta">Begin Audio Session</div>
@@ -2368,7 +2368,7 @@
 
                         const matchPercent = Math.round((job.similarity_score || 0) * 100);
 
-                        // Match score color: green â‰¥ 70, yellow â‰¥ 40, red < 40
+                        // Match score color: green ≥ 70, yellow ≥ 40, red < 40
                         const matchColor = matchPercent >= 70 ? '#2e7d32'
                             : matchPercent >= 40 ? '#e65100'
                                 : '#c62828';
@@ -2464,7 +2464,7 @@
                     `;
 
                         // Safely attach roadmap button AFTER card is in DOM
-                        // (avoids JSON breaking onclick attribute with embedded quotes)
+                        // (avoids JSON breaking in onclick attribute with embedded quotes)
                         if (job.roadmap) {
                             const idx = window.roadmapStore.length;
                             window.roadmapStore.push(job.roadmap);
@@ -2481,7 +2481,7 @@
                 }
             }
 
-            // â”€â”€ Resume feedback renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Resume feedback renderer ──────────────────────────────────────────
             function renderFeedbackHTML(score, feedbackText) {
                 // Score bar color
                 const scoreColor = score >= 70 ? '#2e7d32' : score >= 50 ? '#e65100' : '#c62828';
@@ -2553,7 +2553,7 @@
                 </div>`;
             }
 
-            // â”€â”€ Roadmap renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Roadmap renderer ───────────────────────────────────────────────────
             function showRoadmap(idx) {
                 // Retrieve roadmap from store (avoids JSON breaking in onclick attributes)
                 const roadmapText = (window.roadmapStore && window.roadmapStore[idx]) || '';
@@ -2596,7 +2596,7 @@
                                 background:#e8f5e9;border-left:3px solid #2e7d32;
                                 font-size:13px;text-transform:uppercase;letter-spacing:3px;
                                 color:#2e7d32;font-weight:700;">
-                                ðŸ† Certifications to Earn</div>`;
+                                🏆 Certifications to Earn</div>`;
 
                         // PORTFOLIO PROJECTS header
                     } else if (/^PORTFOLIO PROJECTS/i.test(line)) {
